@@ -1,0 +1,103 @@
+---
+name: Build and Deploy Yo Nginx
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  DOCKERHUB_REPO: ttomerr/yonginx
+  AWS_REGION: il-central-1
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Login to DHI registry
+        uses: docker/login-action@v3
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./nginx
+          push: false
+          load: true
+          tags: |
+            ${{ env.DOCKERHUB_REPO }}:${{ env.SHORT_SHA }}
+            ${{ env.DOCKERHUB_REPO }}:latest
+
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.DOCKERHUB_REPO }}:${{ env.SHORT_SHA }}"
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+
+      - name: Run tests
+        run: |
+          docker run -d --name test -p 8080:8080 "${{ env.DOCKERHUB_REPO }}:${{ env.SHORT_SHA }}"
+          sleep 5
+          curl -f http://localhost:8080 | grep "yo this is nginx"
+          docker stop test
+          docker rm test
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push Docker image
+        run: |
+          docker push "${{ env.DOCKERHUB_REPO }}:${{ env.SHORT_SHA }}"
+          docker push "${{ env.DOCKERHUB_REPO }}:latest"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to EC2 via SSM
+        env:
+          IMAGE: ${{ env.DOCKERHUB_REPO }}:${{ env.SHORT_SHA }}
+        run: |
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=yo-nginx-nginx" "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
+            --output text)
+
+          echo "Deploying to instance: $INSTANCE_ID"
+
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "{\"commands\":[\"docker pull ${IMAGE}\",\"docker stop nginx || true\",\"docker rm nginx || true\",\"docker run -d --name nginx --restart=unless-stopped -p 8080:8080 ${IMAGE}\"]}" \
+            --query "Command.CommandId" \
+            --output text)
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID"
+
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID"
