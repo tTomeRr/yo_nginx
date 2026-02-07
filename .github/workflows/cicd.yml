@@ -103,7 +103,7 @@ jobs:
           cat > /tmp/ssm-params.json <<EOF
           {
             "commands": [
-              "docker login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }}",
+              "echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin",
               "docker pull ${IMAGE}",
               "docker stop nginx || true",
               "docker rm nginx || true",
