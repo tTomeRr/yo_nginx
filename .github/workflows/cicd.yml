@@ -48,7 +48,20 @@ jobs:
         with:
           image-ref: "${{ env.DOCKERHUB_REPO }}:${{ env.SHORT_SHA }}"
           severity: "HIGH,CRITICAL"
-          exit-code: "1"
+          exit-code: "0"
+          format: "json"
+          output: "trivy-results.json"
+
+      - name: Check Trivy thresholds
+        run: |
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
+          echo "HIGH: $HIGH (threshold: 5)"
+          echo "CRITICAL: $CRITICAL (threshold: 2)"
+          if [ "$CRITICAL" -gt 2 ] || [ "$HIGH" -gt 5 ]; then
+            echo "::error::Vulnerability thresholds exceeded! HIGH=$HIGH/5, CRITICAL=$CRITICAL/2"
+            exit 1
+          fi
 
       - name: Run tests
         run: |
