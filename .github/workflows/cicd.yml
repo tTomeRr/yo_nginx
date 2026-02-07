@@ -100,10 +100,22 @@ jobs:
 
           echo "Deploying to instance: $INSTANCE_ID"
 
+          cat > /tmp/ssm-params.json <<EOF
+          {
+            "commands": [
+              "docker login -u ${{ secrets.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }}",
+              "docker pull ${IMAGE}",
+              "docker stop nginx || true",
+              "docker rm nginx || true",
+              "docker run -d --name nginx --restart=unless-stopped -p 8080:8080 ${IMAGE}"
+            ]
+          }
+          EOF
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --parameters "{\"commands\":[\"docker pull ${IMAGE}\",\"docker stop nginx || true\",\"docker rm nginx || true\",\"docker run -d --name nginx --restart=unless-stopped -p 8080:8080 ${IMAGE}\"]}" \
+            --parameters file:///tmp/ssm-params.json \
             --query "Command.CommandId" \
             --output text)
 
