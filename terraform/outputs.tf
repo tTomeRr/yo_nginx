@@ -5,7 +5,12 @@ output "alb_dns_name" {
 
 output "app_url" {
   description = "Application URL"
-  value       = "http://${module.alb.dns_name}"
+  value       = "https://tomerc.com"
+}
+
+output "acm_validation_records" {
+  description = "DNS records to add in Cloudflare for ACM certificate validation"
+  value       = aws_acm_certificate.main.domain_validation_options
 }
 
 output "cicd_access_key_id" {

@@ -12,11 +12,31 @@ provider "aws" {
   region = var.aws_region
 }
 
+/*
+Fetch the public IP addresses of cloudflare to allow requests to our ALB 
+(and the nginx service) to be avaiable only from Cloudflare network
+Thus not allow users to bypass Cloudflare protection
+ */
+data "http" "cloudflare_ipv4" {
+  url = "https://www.cloudflare.com/ips-v4"
+}
+
 locals {
   tags = {
     Terraform   = "true"
     Environment = "prod"
     Project     = var.project_name
+  }
+  cloudflare_ipv4_cidrs = [for cidr in split("\n", trimspace(data.http.cloudflare_ipv4.response_body)) : cidr if cidr != ""]
+}
+
+resource "aws_acm_certificate" "main" {
+  domain_name       = "tomerc.com"
+  validation_method = "DNS"
+  tags              = local.tags
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
@@ -46,8 +66,15 @@ module "alb_sg" {
   description = "ALB security group"
   vpc_id      = module.vpc.vpc_id
 
-  ingress_cidr_blocks = ["0.0.0.0/0"]
-  ingress_rules       = ["http-80-tcp"]
+  ingress_with_cidr_blocks = [
+    for cidr in local.cloudflare_ipv4_cidrs : {
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      description = "Cloudflare"
+      cidr_blocks = cidr
+    }
+  ]
 
   egress_with_cidr_blocks = [
     {
@@ -97,9 +124,11 @@ module "alb" {
   security_groups    = [module.alb_sg.security_group_id]
 
   listeners = {
-    http = {
-      port     = 80
-      protocol = "HTTP"
+    https = {
+      port            = 443
+      protocol        = "HTTPS"
+      ssl_policy      = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+      certificate_arn = aws_acm_certificate.main.arn
       forward = {
         target_group_key = "nginx"
       }
