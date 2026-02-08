@@ -41,7 +41,12 @@ Push to `main` branch. This will trigger the CI/CD pipeline automatically
 
 ## 4. Configure Cloudflare
 
-Add a CNAME record:
+Add ACM validation CNAME record (from `terraform output acm_validation_records`):
+   - **Name:** `_<hash>.tomerc.com`
+   - **Target:** `_<hash>.acm-validations.aws`
+   - **Proxy:** Disabled (DNS only)
+
+Wait for certificate to validate (~1-5 min), then add the routing CNAME:
    - **Name:** `@` or `www`
    - **Target:** ALB DNS name from terraform output
    - **Proxy:** Enabled

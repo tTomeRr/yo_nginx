@@ -21,4 +21,5 @@ output "cicd_access_key_id" {
 output "cicd_secret_access_key" {
   description = "CI/CD IAM user secret access key"
   value       = module.cicd_user.access_key_secret
+  sensitive   = true
 }

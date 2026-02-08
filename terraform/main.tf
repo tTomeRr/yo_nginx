@@ -253,7 +253,7 @@ module "cicd_user" {
 
   name = "${var.project_name}-cicd"
 
-  create_access_key  = true
+  create_access_key    = true
   create_login_profile = false
 
   tags = local.tags
