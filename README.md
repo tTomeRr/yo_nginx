@@ -2,11 +2,13 @@
 
 ## TL;DR
 
-- **Live at [tomerc.com](https://tomerc.com)** 
-— This repository deploys an nginx container running on AWS EC2 behind an ALB, with fully automated CI/CD via GitHub Actions. 
+- **Live at [tomerc.com](https://tomerc.com)**
+- This repository deploys an nginx container running on AWS EC2 behind an ALB, with fully automated CI/CD via GitHub Actions. 
 - See [docs/steps.md](docs/steps.md) for deployment instructions.
 
 ## Architecture
+<img width="742" height="731" alt="aa" src="https://github.com/user-attachments/assets/b2aab283-a206-482c-8619-977caf2e166d" />
+
 
 ```
 User -> Cloudflare (DNS + proxy) -> ALB -> EC2 -> nginx container
